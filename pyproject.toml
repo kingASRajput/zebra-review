@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "zebra-audit"
+version = "0.1.0"
+description = "Monitor any codebase for vulnerabilities, flaws and optimisations — plus document-to-Markdown conversion."
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "MIT" }
+authors = [{ name = "Anmol Rajput" }]
+dependencies = []  # core runs with zero dependencies
+
+[project.optional-dependencies]
+# Document conversion
+docs = ["markitdown[all]>=0.0.1a2"]
+# Heavier security/quality scanners Zebra will auto-detect and drive
+security = ["semgrep", "bandit", "pip-audit", "ruff"]
+all = ["markitdown[all]>=0.0.1a2", "semgrep", "bandit", "pip-audit", "ruff"]
+
+[project.scripts]
+zebra = "zebra.cli:main"
+
+[tool.setuptools]
+packages = ["zebra", "zebra.scanners"]
