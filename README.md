@@ -38,6 +38,8 @@ zebra scan PATH                  # one-shot audit (defaults to current dir)
 zebra scan . --format md -o report.md      # Markdown report
 zebra scan . --format json -o out.json     # machine-readable
 zebra scan . --format sarif -o out.sarif   # for GitHub code-scanning / CI
+zebra scan . --format html -o report.html  # graphical report + fix guidance
+zebra scan . --format pdf -o report.pdf    # graphical PDF (browser-rendered)
 zebra scan . --fail-on high      # exit code 2 if any high+ finding (CI gate)
 zebra scan . --builtin-only      # skip external tools
 zebra scan . --only secrets quality        # run specific scanners
@@ -52,7 +54,14 @@ zebra tools                      # show which optional scanners are installed
 ```
 
 ### Output formats
-`terminal` (default, colourised) · `md` · `json` · `sarif`
+`terminal` (default, colourised) · `md` · `json` · `sarif` · `html` · `pdf`
+
+The **`html`** and **`pdf`** formats produce a graphical report: summary cards, a
+severity distribution chart, and — for every finding type — a **What it is /
+Why it matters / How to fix** block plus a table of all locations. PDF export
+renders via an auto-detected Chromium browser (Chrome/Edge/Chromium/Brave) with
+no extra install; `weasyprint`/`xhtml2pdf` are used as fallbacks if present.
+See [`docs/USAGE.md`](docs/USAGE.md) for the full guide.
 
 ---
 
@@ -63,6 +72,8 @@ zebra/
 ├── cli.py              # argparse front-end: scan / watch / md / tools
 ├── util.py             # Finding model, file walking, tool detection
 ├── report.py           # terminal / markdown / json / sarif renderers
+├── report_html.py      # graphical HTML + PDF renderer (browser print-to-pdf)
+├── remediation.py      # rule → {what, why, fix} knowledge base
 ├── docs.py             # markitdown document → Markdown (with fallback)
 └── scanners/
     ├── secrets.py      # built-in regex + entropy secret detection

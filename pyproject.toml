@@ -17,7 +17,10 @@ dependencies = []  # core runs with zero dependencies
 docs = ["markitdown[all]>=0.0.1a2"]
 # Heavier security/quality scanners Zebra will auto-detect and drive
 security = ["semgrep", "bandit", "pip-audit", "ruff"]
-all = ["markitdown[all]>=0.0.1a2", "semgrep", "bandit", "pip-audit", "ruff"]
+# PDF export fallbacks — only needed if no Chromium browser is available;
+# Zebra prefers a headless browser (Chrome/Edge/Chromium/Brave) and needs neither.
+pdf = ["weasyprint"]
+all = ["markitdown[all]>=0.0.1a2", "semgrep", "bandit", "pip-audit", "ruff", "weasyprint"]
 
 [project.scripts]
 zebra = "zebra.cli:main"

@@ -52,15 +52,38 @@ def _run_scan(root: str, opts) -> List[ScanResult]:
     return results
 
 
+def _ensure_parent(path: str) -> None:
+    parent = os.path.dirname(os.path.abspath(path))
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+
+
 def _emit(root: str, results: List[ScanResult], opts) -> None:
     fmt = opts.format
     if fmt == "terminal":
         report.render_terminal(root, results, opts.max_rows)
         return
-    text = {"md": report.render_markdown,
-            "markdown": report.render_markdown,
-            "json": report.render_json,
-            "sarif": report.render_sarif}[fmt](root, results)
+    if opts.output:
+        _ensure_parent(opts.output)
+    if fmt == "pdf":
+        from . import report_html
+        out = opts.output or "zebra-report.pdf"
+        _ensure_parent(out)
+        try:
+            engine = report_html.render_pdf(root, results, out)
+        except Exception as exc:  # noqa: BLE001
+            print(C.red(f"PDF export failed: {exc}"))
+            return
+        print(C.green(f"PDF report written to {out}  ({engine})"))
+        return
+    if fmt == "html":
+        from . import report_html
+        text = report_html.render_html(root, results)
+    else:
+        text = {"md": report.render_markdown,
+                "markdown": report.render_markdown,
+                "json": report.render_json,
+                "sarif": report.render_sarif}[fmt](root, results)
     if opts.output:
         with open(opts.output, "w", encoding="utf-8") as fh:
             fh.write(text)
@@ -162,7 +185,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     sp = sub.add_parser("scan", help="one-shot audit")
     add_scan_opts(sp)
-    sp.add_argument("--format", choices=["terminal", "md", "markdown", "json", "sarif"],
+    sp.add_argument("--format",
+                    choices=["terminal", "md", "markdown", "json", "sarif",
+                             "html", "pdf"],
                     default="terminal")
     sp.add_argument("-o", "--output", help="write report to a file")
     sp.add_argument("--fail-on", choices=["never", "critical", "high", "medium", "low", "info"],
