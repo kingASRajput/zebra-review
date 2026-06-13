@@ -2,6 +2,8 @@
 
 **Monitor any codebase for vulnerabilities, flaws and optimisations — and convert documents to Markdown.**
 
+📖 **Full handbook:** [`docs/DOCUMENTATION.md`](docs/DOCUMENTATION.md) (benefits, workflows, every feature) · **Cheat-sheet:** [`docs/USAGE.md`](docs/USAGE.md)
+
 Zebra runs out-of-the-box with **zero dependencies**. Its built-in scanners
 (secrets, code-quality, dependency-flaws) always work. When heavier tools
 (`semgrep`, `bandit`, `pip-audit`, `ruff`, `trivy`, `gitleaks`) are installed,
