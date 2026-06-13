@@ -1,0 +1,36 @@
+# Dogfood: Zebra audits its own pull requests and posts a summary comment.
+# A copy-ready template for other repos lives in examples/zebra-pr.yml.
+
+name: Zebra PR audit
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  zebra:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Zebra
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[security]"
+
+      - name: Scan and comment on PR
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          zebra pr-comment . \
+            --sha "${{ github.event.pull_request.head.sha }}" \
+            --comment-threshold medium \
+            --max-findings 40 \
+            --ignore "**/generated/**"

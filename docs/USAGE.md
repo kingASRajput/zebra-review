@@ -143,7 +143,60 @@ ZEBRA_BROWSER="/path/to/chrome" zebra scan . --format pdf -o out.pdf
 
 ---
 
-## 7. How it works
+## 7. PR feedback on GitHub
+
+Zebra can post its findings as a **summary comment on a pull request**. It
+*upserts* — the comment carries a hidden marker so each push updates the same
+comment instead of stacking duplicates. It uses the GitHub REST API directly
+(no extra dependencies) and works on **private repos** with the built-in
+`GITHUB_TOKEN` — no GitHub Advanced Security needed.
+
+### In GitHub Actions
+
+Copy [`examples/zebra-pr.yml`](../examples/zebra-pr.yml) to
+`.github/workflows/zebra-pr.yml` in the target repo. It scans on every PR and
+comments. Key points:
+
+```yaml
+permissions:
+  pull-requests: write          # needed to post the comment
+# ...
+- run: zebra pr-comment . --sha "${{ github.event.pull_request.head.sha }}" \
+         --comment-threshold medium --ignore "**/generated/**"
+  env:
+    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
+
+In Actions, the repo, PR number, token and commit sha are all read from the
+environment automatically.
+
+### Locally / dry run
+
+```bash
+# Preview the exact comment without posting:
+zebra pr-comment . --dry-run --comment-threshold high
+
+# Post to a specific PR with an explicit token:
+zebra pr-comment . --repo owner/name --pr 42 --token "$GH_TOKEN" \
+      --sha "$(git rev-parse HEAD)"
+```
+
+### Useful flags
+
+| Flag | Meaning |
+| --- | --- |
+| `--comment-threshold` | minimum severity listed in the comment (default `info`) |
+| `--max-findings` | cap the number of rows (default 30) |
+| `--fail-on` | exit non-zero to block the PR on findings at/above a severity |
+| `--dry-run` | print the comment instead of posting |
+| `--ignore` | skip paths (e.g. `**/generated/**` to drop false positives) |
+
+> Inline, line-anchored comments are a natural next step — the scan and render
+> work is already done; only diff-to-line mapping would need adding.
+
+---
+
+## 8. How it works
 
 ```
 zebra/
@@ -152,6 +205,7 @@ zebra/
 ├── report.py           # terminal / markdown / json / sarif renderers
 ├── report_html.py      # graphical HTML + PDF renderer (browser print-to-pdf)
 ├── remediation.py      # rule → {what, why, fix} knowledge base
+├── github.py           # post/update a findings summary on a GitHub PR
 ├── docs.py             # markitdown document → Markdown (with fallback)
 └── scanners/
     ├── secrets.py      # regex + entropy secret detection
@@ -165,7 +219,7 @@ hint**, never fatal — so the report always renders.
 
 ---
 
-## 8. Extending the remediation guidance
+## 9. Extending the remediation guidance
 
 The advice in the HTML/PDF report comes from `zebra/remediation.py`, a dict
 keyed by rule id (or finding title). To add or refine guidance for a rule:
@@ -187,12 +241,13 @@ shows a blank cell. Rule ids come from the scanners — secret rules use ids lik
 
 ---
 
-## 9. Command reference
+## 10. Command reference
 
 | Command | Purpose |
 | --- | --- |
 | `zebra scan PATH` | one-shot audit |
 | `zebra watch PATH` | continuous re-audit on an interval |
+| `zebra pr-comment PATH` | scan and post a summary comment on a GitHub PR |
 | `zebra md FILES…` | convert documents to Markdown |
 | `zebra tools` | list installed/optional scanners |
 

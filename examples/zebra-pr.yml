@@ -1,0 +1,47 @@
+# Zebra PR audit — drop this into ANY repo at .github/workflows/zebra-pr.yml
+#
+# On every pull request it scans the code and posts (or updates) a single
+# summary comment with the findings. Works on private repos with the built-in
+# GITHUB_TOKEN — no GitHub Advanced Security required.
+#
+# Zebra is installed straight from its git repo, so the target repo needs no
+# vendored copy. Pin to a tag/sha instead of @main for reproducible runs.
+
+name: Zebra PR audit
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write   # required to post the comment
+
+jobs:
+  zebra:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Zebra
+        run: |
+          python -m pip install --upgrade pip
+          # Core scanners need nothing extra. Add the deeper engines for
+          # SAST + dependency-CVE coverage:
+          pip install "zebra-audit[security] @ git+https://github.com/kingASRajput/zebra-review.git"
+
+      - name: Scan and comment on PR
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          zebra pr-comment . \
+            --sha "${{ github.event.pull_request.head.sha }}" \
+            --comment-threshold medium \
+            --max-findings 40 \
+            --ignore "**/generated/**"
+          # Add `--fail-on high` above to block the PR on critical/high findings.

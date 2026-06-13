@@ -139,6 +139,41 @@ def cmd_watch(opts) -> int:
         return 0
 
 
+def cmd_pr_comment(opts) -> int:
+    from . import github as gh
+    root = os.path.abspath(opts.path)
+    if not os.path.isdir(root):
+        print(C.red(f"Not a directory: {root}"))
+        return 1
+    repo = gh.resolve_repo(opts.repo)
+    token = gh.resolve_token(opts.token)
+    pr = gh.resolve_pr(opts.pr)
+    sha = gh.resolve_sha(opts.sha)
+
+    results = _run_scan(root, opts)
+    body = gh.render_pr_comment(root, results, repo=repo, sha=sha,
+                                max_findings=opts.max_findings,
+                                comment_threshold=opts.comment_threshold)
+
+    if opts.dry_run:
+        print(body)
+    else:
+        missing = [n for n, v in (("--repo/GITHUB_REPOSITORY", repo),
+                                  ("--pr/GITHUB_REF", pr),
+                                  ("--token/GITHUB_TOKEN", token)) if not v]
+        if missing:
+            print(C.red(f"Cannot post: missing {', '.join(missing)}. "
+                        f"Use --dry-run to preview."))
+            return 1
+        try:
+            result = gh.post_or_update_comment(repo, pr, token, body)
+        except Exception as exc:  # noqa: BLE001
+            print(C.red(f"Failed to post PR comment: {exc}"))
+            return 1
+        print(C.green(f"PR #{pr}: {result}"))
+    return _exit_code(results, opts.fail_on)
+
+
 def cmd_md(opts) -> int:
     n = docs.convert(opts.files, opts.output_dir)
     print(C.green(f"\nConverted {n} file(s) to Markdown."))
@@ -198,6 +233,28 @@ def build_parser() -> argparse.ArgumentParser:
     add_scan_opts(sp)
     sp.add_argument("--interval", type=int, default=15, help="seconds between scans")
     sp.set_defaults(func=cmd_watch, format="terminal", output=None, fail_on="never")
+
+    sp = sub.add_parser("pr-comment",
+                        help="scan and post a summary comment on a GitHub PR")
+    add_scan_opts(sp)
+    sp.add_argument("--repo", help="owner/name (default: $GITHUB_REPOSITORY)")
+    sp.add_argument("--pr", type=int,
+                    help="PR number (default: inferred from $GITHUB_REF / event)")
+    sp.add_argument("--token", help="GitHub token (default: $GITHUB_TOKEN)")
+    sp.add_argument("--sha", help="commit sha for file links (default: $GITHUB_SHA)")
+    sp.add_argument("--comment-threshold",
+                    choices=["critical", "high", "medium", "low", "info"],
+                    default="info",
+                    help="minimum severity to list in the comment (default: info)")
+    sp.add_argument("--max-findings", type=int, default=30,
+                    help="max findings listed in the comment (default: 30)")
+    sp.add_argument("--fail-on",
+                    choices=["never", "critical", "high", "medium", "low", "info"],
+                    default="never",
+                    help="exit non-zero if a finding at/above this severity exists")
+    sp.add_argument("--dry-run", action="store_true",
+                    help="print the comment instead of posting it")
+    sp.set_defaults(func=cmd_pr_comment)
 
     sp = sub.add_parser("md", help="convert documents to Markdown (markitdown)")
     sp.add_argument("files", nargs="+", help="files to convert (pdf, docx, pptx, xlsx, html, …)")
