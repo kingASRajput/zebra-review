@@ -174,6 +174,66 @@ def cmd_pr_comment(opts) -> int:
     return _exit_code(results, opts.fail_on)
 
 
+def cmd_review(opts) -> int:
+    from . import review as rv
+    from . import report_review as rr
+    root = os.path.abspath(opts.path)
+    if not os.path.isdir(root):
+        print(C.red(f"Not a directory: {root}"))
+        return 1
+
+    result = rv.run_review(root, opts)
+
+    # local output
+    if opts.format == "md":
+        text = rr.render_markdown(result)
+        if opts.output:
+            _ensure_parent(opts.output)
+            with open(opts.output, "w", encoding="utf-8") as fh:
+                fh.write(text)
+            print(C.green(f"Review written to {opts.output}"))
+        else:
+            print(text)
+    else:
+        rr.render_terminal(result)
+
+    # optional: post to a GitHub PR as a code review
+    if opts.post or opts.dry_run:
+        from . import github as gh
+        body = rr.render_markdown(result)
+        inline = [{"path": c.path, "line": c.line,
+                   "body": f"{rr.SEV_EMOJI.get(c.severity,'')} **{c.severity}** "
+                           f"({c.source}): {c.body}"}
+                  for c in result.comments]
+        if opts.dry_run:
+            print(C.dim("\n--- would post this review body ---\n"))
+            print(body)
+            print(C.dim(f"\n(+ {len(inline)} inline comments)"))
+        else:
+            repo = gh.resolve_repo(opts.repo)
+            pr = gh.resolve_pr(opts.pr)
+            token = gh.resolve_token(opts.token)
+            missing = [n for n, v in (("--repo", repo), ("--pr", pr),
+                                      ("--token/GITHUB_TOKEN", token)) if not v]
+            if missing:
+                print(C.red(f"Cannot post: missing {', '.join(missing)}."))
+                return 1
+            try:
+                msg = gh.post_review(repo, pr, token, body, inline)
+            except Exception as exc:  # noqa: BLE001
+                print(C.red(f"Failed to post review: {exc}"))
+                return 1
+            print(C.green(f"PR #{pr}: {msg}"))
+
+    # exit code gate
+    from .util import SEV_RANK
+    if opts.fail_on != "never":
+        thr = SEV_RANK[opts.fail_on]
+        if any(SEV_RANK.get(c.severity, 99) <= thr for c in result.comments):
+            return 2
+    return 0
+
+
 def cmd_md(opts) -> int:
     n = docs.convert(opts.files, opts.output_dir)
     print(C.green(f"\nConverted {n} file(s) to Markdown."))
@@ -255,6 +315,32 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--dry-run", action="store_true",
                     help="print the comment instead of posting it")
     sp.set_defaults(func=cmd_pr_comment)
+
+    sp = sub.add_parser("review",
+                        help="code-review the current diff (hybrid: scanners + Claude)")
+    sp.add_argument("path", nargs="?", default=".", help="repo root (default: .)")
+    sp.add_argument("--base", help="base ref to diff against (default: merge-base with main)")
+    sp.add_argument("--head", help="head ref (default: working tree)")
+    sp.add_argument("--model", default="claude-opus-4-8",
+                    help="Claude model for the LLM pass (default: claude-opus-4-8)")
+    sp.add_argument("--no-llm", action="store_true",
+                    help="deterministic scanners only; skip the Claude pass")
+    sp.add_argument("--builtin-only", action="store_true",
+                    help="skip external scanners (ruff/bandit/semgrep) in the deterministic pass")
+    sp.add_argument("--min-severity", choices=["critical", "high", "medium", "low", "info"],
+                    default="info", help="drop comments below this severity")
+    sp.add_argument("--min-confidence", choices=["high", "medium", "low"],
+                    default="low", help="drop LLM comments below this confidence")
+    sp.add_argument("--format", choices=["terminal", "md"], default="terminal")
+    sp.add_argument("-o", "--output", help="write the markdown review to a file")
+    sp.add_argument("--post", action="store_true", help="post as a GitHub PR review")
+    sp.add_argument("--dry-run", action="store_true", help="print what would be posted")
+    sp.add_argument("--repo", help="owner/name (default: $GITHUB_REPOSITORY)")
+    sp.add_argument("--pr", type=int, help="PR number (default: inferred from env)")
+    sp.add_argument("--token", help="GitHub token (default: $GITHUB_TOKEN)")
+    sp.add_argument("--fail-on", choices=["never", "critical", "high", "medium", "low", "info"],
+                    default="never", help="exit 2 if a comment at/above this severity exists")
+    sp.set_defaults(func=cmd_review)
 
     sp = sub.add_parser("md", help="convert documents to Markdown (markitdown)")
     sp.add_argument("files", nargs="+", help="files to convert (pdf, docx, pptx, xlsx, html, …)")

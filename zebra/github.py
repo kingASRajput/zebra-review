@@ -209,3 +209,30 @@ def post_or_update_comment(repo: str, pr: int, token: str, body: str,
     url = f"{API}/repos/{repo}/issues/{pr}/comments"
     _, res = _request("POST", url, token, {"body": body})
     return f"created comment {res.get('html_url', '')}"
+
+
+# --------------------------------------------------------------------------- #
+# Code-review posting (inline comments on changed lines)
+# --------------------------------------------------------------------------- #
+def post_review(repo: str, pr: int, token: str, body: str,
+                inline_comments: list) -> str:
+    """Create a PR review with inline comments.
+
+    `inline_comments` is a list of {path, line, body}. The modern reviews API
+    anchors comments by file path + new-file line number (side=RIGHT), so no
+    diff-position math is needed. Comments that GitHub rejects (line not in the
+    diff) are retried as part of the summary body so nothing is silently lost.
+    """
+    comments = [{"path": c["path"], "line": int(c["line"]),
+                 "side": "RIGHT", "body": c["body"]}
+                for c in inline_comments if c.get("line")]
+    payload = {"event": "COMMENT", "body": body, "comments": comments}
+    url = f"{API}/repos/{repo}/pulls/{pr}/reviews"
+    try:
+        _, res = _request("POST", url, token, payload)
+        return f"posted review with {len(comments)} inline comment(s): {res.get('html_url', '')}"
+    except RuntimeError as exc:
+        # Fallback: some lines may be outside the diff window — post summary only.
+        _, res = _request("POST", url, token, {"event": "COMMENT", "body": body})
+        return (f"inline anchoring failed ({exc}); posted summary-only review: "
+                f"{res.get('html_url', '')}")

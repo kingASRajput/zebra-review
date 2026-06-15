@@ -55,6 +55,31 @@ zebra md page.html               # print Markdown to stdout
 zebra tools                      # show which optional scanners are installed
 ```
 
+### Code review (not audit)
+
+`zebra review` is a **PR code review** — scoped to the diff, not the whole repo.
+It is a *hybrid* of deterministic scanners (run on the changed lines only) and an
+LLM pass (Claude) that catches the semantic stuff linters miss (API/docstring
+mismatches, unused args, logic bugs). Output is Copilot-style: a short **Pull
+request overview**, a **per-file summary**, and **inline comments** anchored to
+changed lines with a severity per comment.
+
+```bash
+zebra review                     # review working tree vs merge-base with main
+zebra review --base origin/main --head HEAD
+zebra review --no-llm            # deterministic scanners only (no API key needed)
+zebra review --format md -o review.md
+zebra review --post --repo owner/name --pr 42   # post as a GitHub PR review
+zebra review --dry-run --pr 42   # preview what would be posted
+zebra review --min-confidence medium --min-severity low   # filter the LLM findings
+```
+
+The LLM pass uses **`claude-opus-4-8`** (override with `--model`) with adaptive
+thinking and structured outputs. It needs `pip install anthropic` and an
+`ANTHROPIC_API_KEY`; without either, Zebra prints a hint and falls back to the
+deterministic pass. (`zebra pr-comment` still posts the full *audit* summary —
+use `zebra review` for a code review.)
+
 ### Output formats
 `terminal` (default, colourised) · `md` · `json` · `sarif` · `html` · `pdf`
 
@@ -75,7 +100,12 @@ zebra/
 ├── util.py             # Finding model, file walking, tool detection
 ├── report.py           # terminal / markdown / json / sarif renderers
 ├── report_html.py      # graphical HTML + PDF renderer (browser print-to-pdf)
+├── report_review.py    # code-review renderer (terminal + GitHub markdown)
 ├── remediation.py      # rule → {what, why, fix} knowledge base
+├── diff.py             # git diff acquisition + parsing (changed-line index)
+├── llm.py              # Claude-powered review pass (anthropic SDK, lazy)
+├── review.py           # hybrid PR review: scanners-on-diff + LLM
+├── github.py           # PR comment + PR review posting (urllib)
 ├── docs.py             # markitdown document → Markdown (with fallback)
 └── scanners/
     ├── secrets.py      # built-in regex + entropy secret detection

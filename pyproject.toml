@@ -20,7 +20,9 @@ security = ["semgrep", "bandit", "pip-audit", "ruff"]
 # PDF export fallbacks — only needed if no Chromium browser is available;
 # Zebra prefers a headless browser (Chrome/Edge/Chromium/Brave) and needs neither.
 pdf = ["weasyprint"]
-all = ["markitdown[all]>=0.0.1a2", "semgrep", "bandit", "pip-audit", "ruff", "weasyprint"]
+# LLM code review (`zebra review`) — needs an ANTHROPIC_API_KEY at runtime.
+review = ["anthropic"]
+all = ["markitdown[all]>=0.0.1a2", "semgrep", "bandit", "pip-audit", "ruff", "weasyprint", "anthropic"]
 
 [project.scripts]
 zebra = "zebra.cli:main"
