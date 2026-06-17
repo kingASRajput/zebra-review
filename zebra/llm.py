@@ -44,13 +44,35 @@ it can be ranked. Anchor each finding to the exact new-file line number shown in
 the diff. Write each comment in clear, specific prose (1-3 sentences), naming the \
 symbol involved, like the best GitHub review comments.
 
-Also produce a short PR overview: one or two sentences on what the PR does, then \
-a one-line description per changed file."""
+When a fix is mechanical and you are confident, include a `suggestion`: the exact \
+replacement text for that single line (the full new line content, no diff markers, \
+no surrounding lines). Leave `suggestion` empty when the fix is non-trivial, spans \
+multiple lines, or you are unsure.
+
+Also produce:
+- A short PR overview: one or two sentences on what the PR does, then a one-line \
+description per changed file.
+- A `verdict` telling the author whether the change is good to merge. Set \
+`decision` to "approve" if the changes look good with at most trivial nits, \
+"request_changes" if something should be fixed before merging (bugs, broken \
+contracts), or "comment" if there are non-blocking suggestions worth considering. \
+The `message` is a direct 1-3 sentence note to the author: either "these changes \
+look good to merge" or specifically what to change and in which file(s)."""
 
 # JSON schema for structured output.
 _SCHEMA = {
     "type": "object",
     "properties": {
+        "verdict": {
+            "type": "object",
+            "properties": {
+                "decision": {"type": "string",
+                             "enum": ["approve", "request_changes", "comment"]},
+                "message": {"type": "string"},
+            },
+            "required": ["decision", "message"],
+            "additionalProperties": False,
+        },
         "overview": {
             "type": "object",
             "properties": {
@@ -87,14 +109,15 @@ _SCHEMA = {
                                           "unused", "error-handling", "readability",
                                           "naming", "simplification", "other"]},
                     "comment": {"type": "string"},
+                    "suggestion": {"type": "string"},
                 },
                 "required": ["path", "line", "severity", "confidence",
-                             "category", "comment"],
+                             "category", "comment", "suggestion"],
                 "additionalProperties": False,
             },
         },
     },
-    "required": ["overview", "comments"],
+    "required": ["verdict", "overview", "comments"],
     "additionalProperties": False,
 }
 
@@ -104,6 +127,8 @@ class LLMReview:
     summary: str
     file_descriptions: List[Tuple[str, str]]   # (path, description)
     comments: List[dict]                        # raw comment dicts (schema above)
+    verdict_decision: str = "comment"           # approve | request_changes | comment
+    verdict_message: str = ""
     available: bool = True
     skipped_reason: str = ""
     model: str = DEFAULT_MODEL
@@ -167,9 +192,12 @@ def review_diff(diff_text: str, model: str = DEFAULT_MODEL,
     overview = data.get("overview", {}) or {}
     files = [(f.get("path", ""), f.get("description", ""))
              for f in overview.get("files", []) or []]
+    verdict = data.get("verdict", {}) or {}
     return LLMReview(
         summary=overview.get("summary", ""),
         file_descriptions=files,
         comments=data.get("comments", []) or [],
+        verdict_decision=verdict.get("decision", "comment"),
+        verdict_message=verdict.get("message", ""),
         model=model,
     )

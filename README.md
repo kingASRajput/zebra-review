@@ -60,9 +60,15 @@ zebra tools                      # show which optional scanners are installed
 `zebra review` is a **PR code review** — scoped to the diff, not the whole repo.
 It is a *hybrid* of deterministic scanners (run on the changed lines only) and an
 LLM pass (Claude) that catches the semantic stuff linters miss (API/docstring
-mismatches, unused args, logic bugs). Output is Copilot-style: a short **Pull
-request overview**, a **per-file summary**, and **inline comments** anchored to
-changed lines with a severity per comment.
+mismatches, unused args, logic bugs). Output is Copilot-style:
+
+- a **verdict** up front — `✅ Approve` / `🔧 Changes requested` / `💬 Comment`
+  with a direct message telling you whether the changes are good to merge or what
+  to fix and in which file;
+- a short **Pull request overview** + **per-file summary**;
+- **inline comments** anchored to changed lines, each with a severity; and
+- **one-click autofix suggestions** (GitHub ` ```suggestion ` blocks) when a fix
+  is mechanical.
 
 ```bash
 zebra review                     # review working tree vs merge-base with main

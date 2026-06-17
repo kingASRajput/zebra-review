@@ -11,6 +11,18 @@ SEV_COLOR = {"critical": C.red, "high": C.red, "medium": C.yellow,
              "low": C.blue, "info": C.dim}
 
 
+VERDICT_TERMINAL = {
+    "approve": lambda m: C.green("✅ Approve — ") + m,
+    "request_changes": lambda m: C.red("🔧 Changes requested — ") + m,
+    "comment": lambda m: C.yellow("💬 Comment — ") + m,
+}
+VERDICT_MD = {
+    "approve": "✅ **Approve** — ",
+    "request_changes": "🔧 **Changes requested** — ",
+    "comment": "💬 **Comment** — ",
+}
+
+
 def _counts(comments: List[ReviewComment]):
     out = {}
     for c in comments:
@@ -26,6 +38,12 @@ def render_terminal(review: Review) -> None:
     if review.llm_status:
         print(f"   {C.yellow('LLM pass skipped')}: {C.dim(review.llm_status)}")
     print()
+
+    # verdict banner — the headline answer: good to merge, or change something?
+    if review.verdict_message:
+        line = VERDICT_TERMINAL.get(review.verdict_decision,
+                                    VERDICT_TERMINAL["comment"])(review.verdict_message)
+        print(C.bold(line) + "\n")
 
     if review.overview_summary:
         print(C.bold("Overview"))
@@ -60,12 +78,17 @@ def render_terminal(review: Review) -> None:
             tag = C.dim(f"[{c.source}{('/' + c.confidence) if c.confidence else ''}]")
             print(f"   {sev} line {c.line}  {tag}")
             print(f"            {c.body}")
+            if c.suggestion:
+                print(f"            {C.green('suggested fix:')} {c.suggestion}")
         print()
 
 
 # --------------------------------------------------------------------------- #
-def render_markdown(review: Review) -> str:
+def render_markdown(review: Review, inline_suggestions: bool = True) -> str:
     lines = ["## 🦓 Zebra code review", ""]
+    if review.verdict_message:
+        lines += [VERDICT_MD.get(review.verdict_decision,
+                                 VERDICT_MD["comment"]) + review.verdict_message, ""]
     if review.overview_summary:
         lines += ["### Pull request overview", "", review.overview_summary, ""]
     if review.file_descriptions:
@@ -88,6 +111,11 @@ def render_markdown(review: Review) -> str:
                 meta += f" · `{c.source}`"
                 lines.append(f"- **L{c.line}** — {meta}  ")
                 lines.append(f"  {c.body}")
+                if c.suggestion and inline_suggestions:
+                    lines.append("")
+                    lines.append("  ```suggestion")
+                    lines.append("  " + c.suggestion)
+                    lines.append("  ```")
             lines.append("")
 
     if review.llm_status:

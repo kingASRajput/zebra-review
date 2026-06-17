@@ -200,10 +200,18 @@ def cmd_review(opts) -> int:
     # optional: post to a GitHub PR as a code review
     if opts.post or opts.dry_run:
         from . import github as gh
-        body = rr.render_markdown(result)
-        inline = [{"path": c.path, "line": c.line,
-                   "body": f"{rr.SEV_EMOJI.get(c.severity,'')} **{c.severity}** "
-                           f"({c.source}): {c.body}"}
+        # Body has the verdict + overview; suggestions live on the inline comments
+        # (so GitHub renders the one-click "apply suggestion" autofix).
+        body = rr.render_markdown(result, inline_suggestions=False)
+
+        def _inline_body(c):
+            txt = (f"{rr.SEV_EMOJI.get(c.severity, '')} **{c.severity}** "
+                   f"({c.source}): {c.body}")
+            if c.suggestion:
+                txt += "\n\n```suggestion\n" + c.suggestion + "\n```"
+            return txt
+
+        inline = [{"path": c.path, "line": c.line, "body": _inline_body(c)}
                   for c in result.comments]
         if opts.dry_run:
             print(C.dim("\n--- would post this review body ---\n"))

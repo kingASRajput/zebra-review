@@ -25,6 +25,7 @@ class ReviewComment:
     source: str               # "claude" | "ruff" | "quality" | ...
     category: str = ""
     confidence: str = ""
+    suggestion: str = ""      # one-line replacement for an autofix block
 
     def sort_key(self):
         return (self.path, self.line, SEV_RANK.get(self.severity, 99))
@@ -37,6 +38,8 @@ class Review:
     file_descriptions: List[Tuple[str, str]] = field(default_factory=list)
     comments: List[ReviewComment] = field(default_factory=list)
     changed_files: List[gitdiff.FileDiff] = field(default_factory=list)
+    verdict_decision: str = "comment"   # approve | request_changes | comment
+    verdict_message: str = ""
     llm_status: str = ""          # "" means ran; otherwise the skip reason
     model: str = ""
 
@@ -120,6 +123,8 @@ def run_review(root: str, opts) -> Review:
         else:
             review.overview_summary = result.summary
             review.file_descriptions = result.file_descriptions
+            review.verdict_decision = result.verdict_decision
+            review.verdict_message = result.verdict_message
             min_conf = getattr(opts, "min_confidence", "low")
             conf_rank = {"high": 0, "medium": 1, "low": 2}
             thr = conf_rank.get(min_conf, 2)
@@ -128,21 +133,15 @@ def run_review(root: str, opts) -> Review:
                     continue
                 path = c.get("path", "")
                 line = c.get("line")
-                if path in changed and line in changed[path]:
-                    comments.append(ReviewComment(
-                        path=path, line=int(line),
-                        severity=c.get("severity", "low"),
-                        body=c.get("comment", ""), source="claude",
-                        category=c.get("category", ""),
-                        confidence=c.get("confidence", "")))
-                elif line is not None and path:
-                    # keep but mark as file-level if line isn't in the diff window
-                    comments.append(ReviewComment(
-                        path=path, line=int(line),
-                        severity=c.get("severity", "low"),
-                        body=c.get("comment", ""), source="claude",
-                        category=c.get("category", ""),
-                        confidence=c.get("confidence", "")))
+                if line is None or not path:
+                    continue
+                comments.append(ReviewComment(
+                    path=path, line=int(line),
+                    severity=c.get("severity", "low"),
+                    body=c.get("comment", ""), source="claude",
+                    category=c.get("category", ""),
+                    confidence=c.get("confidence", ""),
+                    suggestion=(c.get("suggestion") or "").rstrip("\n")))
 
     # severity floor
     floor = getattr(opts, "min_severity", "info")
@@ -150,4 +149,25 @@ def run_review(root: str, opts) -> Review:
     comments = [c for c in comments if SEV_RANK.get(c.severity, 99) <= fthr]
 
     review.comments = _dedupe(comments)
+
+    # If the LLM didn't supply a verdict (skipped or disabled), derive one.
+    if review.llm_status or not review.verdict_message:
+        review.verdict_decision, review.verdict_message = _fallback_verdict(review.comments)
     return review
+
+
+def _fallback_verdict(comments: List[ReviewComment]) -> Tuple[str, str]:
+    """Deterministic verdict from comment severities when no LLM message exists."""
+    if not comments:
+        return "approve", "No issues found in the changed lines — looks good to merge."
+    worst = min((SEV_RANK.get(c.severity, 99) for c in comments), default=99)
+    n = len(comments)
+    if worst <= SEV_RANK["high"]:
+        return ("request_changes",
+                f"{n} issue(s) found, including high-severity ones — please address "
+                f"the flagged lines before merging.")
+    if worst <= SEV_RANK["medium"]:
+        return ("comment",
+                f"{n} issue(s) worth reviewing before merge; none are blocking.")
+    return ("approve",
+            f"Only minor ({n}) low/info notes — fine to merge after a quick look.")
